@@ -196,13 +196,12 @@ export default function App() {
 
   const runAIModeration = async () => {
     setIsRunningAI(true);
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-    const updatedComments = [...comments];
-
-    for (let i = 0; i < updatedComments.length; i++) {
-      const comment = updatedComments[i];
-      if (comment.status === 'pending' && !comment.aiResult) {
+      const pendingComments = comments.filter(c => c.status === 'pending' && !c.aiResult);
+      
+      const promises = pendingComments.map(async (comment) => {
         try {
           const prompt = JSON.stringify({
             article_category: ARTICLE_CATEGORY,
@@ -212,7 +211,7 @@ export default function App() {
           });
 
           const response = await ai.models.generateContent({
-            model: "gemini-3.1-flash-preview",
+            model: "gemini-3-flash-preview",
             contents: prompt,
             config: {
               systemInstruction: SYSTEM_INSTRUCTION,
@@ -225,15 +224,27 @@ export default function App() {
           const resultText = response.text;
           if (resultText) {
              const aiResult = JSON.parse(resultText) as AIResult;
-             updatedComments[i] = { ...comment, aiResult };
-             setComments([...updatedComments]);
+             return { ...comment, aiResult };
           }
         } catch (error) {
           console.error("AI Error for comment", comment.id, error);
         }
-      }
+        return comment;
+      });
+
+      const processedComments = await Promise.all(promises);
+
+      setComments(prevComments => prevComments.map(c => {
+        const processed = processedComments.find(pc => pc.id === c.id);
+        return processed ? processed : c;
+      }));
+
+    } catch (error) {
+      console.error("Global AI Error:", error);
+      alert("Có lỗi xảy ra khi gọi AI: " + (error as Error).message);
+    } finally {
+      setIsRunningAI(false);
     }
-    setIsRunningAI(false);
   };
 
   const handleAction = (id: string, action: 'publish' | 'delete', reason?: 'Theo nguyên tắc' | 'Không phù hợp') => {
@@ -305,7 +316,7 @@ export default function App() {
         </div>
 
         <div className="p-3 border-t border-gray-300 text-xs bg-gray-200">
-          <div className="font-bold">buidong (Logout)</div>
+          <div className="font-bold">HieuNguyen (Logout)</div>
           <div className="text-blue-600 hover:underline cursor-pointer">Account Setting</div>
         </div>
       </div>
