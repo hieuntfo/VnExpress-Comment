@@ -4,7 +4,7 @@ import {
   AlertCircle, CheckCircle, Trash2, Edit, RefreshCw, 
   ShieldAlert, ShieldCheck, Info, Database, Play,
   ChevronDown, Settings, User, LogOut, FileText, BarChart2, MessageSquare,
-  CheckSquare, XSquare
+  CheckSquare, XSquare, Loader2
 } from 'lucide-react';
 
 interface AIResult {
@@ -188,11 +188,17 @@ const getAIStatusConfig = (status: string) => {
 export default function App() {
   const [comments, setComments] = useState<Comment[]>(initialComments);
   const [isRunningAI, setIsRunningAI] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [trainingLogs, setTrainingLogs] = useState<TrainingLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [filter, setFilter] = useState<'all' | 'pending' | 'published' | 'deleted'>('pending');
 
+  // Selection states
+  const [selectedVerify, setSelectedVerify] = useState<string[]>([]);
+  const [selectedDelete, setSelectedDelete] = useState<{id: string, reason: 'Theo nguyên tắc' | 'Không phù hợp'}[]>([]);
+
   const pendingCount = comments.filter(c => c.status === 'pending').length;
+  const filteredComments = comments.filter(c => filter === 'all' || c.status === filter);
 
   const runAIModeration = async () => {
     setIsRunningAI(true);
@@ -269,19 +275,90 @@ export default function App() {
       setTrainingLogs(prev => [logEntry, ...prev]);
     }
 
-    setComments(comments.map(c => 
+    setComments(prev => prev.map(c => 
       c.id === id ? { ...c, status: action === 'publish' ? 'published' : 'deleted', deleteReason: reason } : c
     ));
+  };
+
+  const handleBulkVerify = () => {
+    if (selectedVerify.length === 0) return;
+    if (window.confirm("Are you sure to publish this comment?")) {
+      setIsProcessing(true);
+      setTimeout(() => {
+        selectedVerify.forEach(id => handleAction(id, 'publish'));
+        setSelectedVerify([]);
+        setIsProcessing(false);
+      }, 800);
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedDelete.length === 0) return;
+    if (window.confirm("Are you sure to delete this comment?")) {
+      setIsProcessing(true);
+      setTimeout(() => {
+        selectedDelete.forEach(item => handleAction(item.id, 'delete', item.reason));
+        setSelectedDelete([]);
+        setIsProcessing(false);
+      }, 800);
+    }
   };
 
   const handleUpdateText = (id: string, newText: string) => {
     setComments(comments.map(c => c.id === id ? { ...c, text: newText } : c));
   };
 
-  const filteredComments = comments.filter(c => filter === 'all' || c.status === filter);
+  const toggleVerifySelection = (id: string) => {
+    setSelectedVerify(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+    // Uncheck delete if verify is checked
+    setSelectedDelete(prev => prev.filter(item => item.id !== id));
+  };
+
+  const toggleDeleteSelection = (id: string, reason: 'Theo nguyên tắc' | 'Không phù hợp') => {
+    setSelectedDelete(prev => {
+      const existing = prev.find(item => item.id === id);
+      if (existing && existing.reason === reason) {
+        return prev.filter(item => item.id !== id); // Uncheck
+      }
+      return [...prev.filter(item => item.id !== id), { id, reason }]; // Check new reason
+    });
+    // Uncheck verify if delete is checked
+    setSelectedVerify(prev => prev.filter(item => item !== id));
+  };
+
+  const isAllVerifyChecked = filteredComments.length > 0 && filteredComments.every(c => selectedVerify.includes(c.id));
+  const isAllDeleteChecked = filteredComments.length > 0 && filteredComments.every(c => selectedDelete.some(d => d.id === c.id));
+
+  const toggleAllVerify = () => {
+    if (isAllVerifyChecked) {
+      setSelectedVerify([]);
+    } else {
+      setSelectedVerify(filteredComments.map(c => c.id));
+      setSelectedDelete([]);
+    }
+  };
+
+  const toggleAllDelete = () => {
+    if (isAllDeleteChecked) {
+      setSelectedDelete([]);
+    } else {
+      setSelectedDelete(filteredComments.map(c => ({ id: c.id, reason: 'Theo nguyên tắc' })));
+      setSelectedVerify([]);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#f0f0f0] flex font-sans text-sm">
+    <div className="min-h-screen bg-[#f0f0f0] flex font-sans text-sm relative">
+      {/* Processing Overlay */}
+      {isProcessing && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex flex-col items-center justify-center text-white">
+          <Loader2 className="w-12 h-12 animate-spin mb-4" />
+          <span className="text-xl font-semibold">Đang xử lý</span>
+        </div>
+      )}
+
       {/* Sidebar - Classic CMS Look */}
       <div className="w-56 bg-[#e0e0e0] border-r border-gray-300 flex flex-col">
         <div className="p-3 border-b border-gray-300 bg-white">
@@ -327,7 +404,7 @@ export default function App() {
         <div className="p-2 border-b border-gray-300 bg-gray-50 flex items-center justify-between">
           <div className="text-sm">
             <span className="text-gray-600">List Comment: </span>
-            <span className="font-bold text-blue-800">{ARTICLE_TITLE}</span>
+            <span className="font-bold text-blue-800">{ARTICLE_TITLE} - Try To Fix Comment</span>
           </div>
           <div className="flex items-center gap-4">
             <button 
@@ -341,52 +418,74 @@ export default function App() {
         </div>
 
         {/* Toolbar */}
-        <div className="p-2 border-b border-gray-300 bg-white flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="p-2 border-b border-gray-300 bg-white flex flex-col gap-2">
+          <div className="flex items-center gap-2">
             {pendingCount > 0 && (
               <div className="bg-yellow-200 text-yellow-800 px-3 py-1 text-xs font-bold border border-yellow-400">
                 Có {pendingCount} bài mới chưa được xử lý
               </div>
             )}
+            <div className="bg-yellow-200 text-yellow-800 px-3 py-1 text-xs font-bold border border-yellow-400">
+              Có 2 bài có comment publishing chưa được xử lý
+            </div>
             <button 
               onClick={runAIModeration}
               disabled={isRunningAI || pendingCount === 0}
-              className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 text-xs font-bold rounded shadow-sm hover:bg-blue-700 disabled:opacity-50"
+              className="ml-auto flex items-center gap-1 bg-blue-600 text-white px-3 py-1 text-xs font-bold rounded shadow-sm hover:bg-blue-700 disabled:opacity-50"
             >
               {isRunningAI ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
               {isRunningAI ? 'AI Đang Quét...' : 'Chạy AI Tiền Kiểm'}
             </button>
           </div>
           
-          <div className="flex items-center gap-2 text-xs">
-            <select 
-              className="border border-gray-300 px-2 py-1 bg-white"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as any)}
-            >
-              <option value="all">All Status</option>
-              <option value="pending">Pending (Verify)</option>
-              <option value="published">Published</option>
-              <option value="deleted">Deleted</option>
-            </select>
-            <select className="border border-gray-300 px-2 py-1 bg-white">
-              <option>Oldest comments</option>
-              <option>Newest comments</option>
-            </select>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Back</button>
+              <button onClick={handleBulkDelete} className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Delete</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleBulkVerify} className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Verify</button>
+              <button className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Export Excel</button>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span>Type Comment:</span>
+              <select className="border border-gray-300 px-1 py-0.5 bg-white"><option>All Comment</option></select>
+              <span>User type:</span>
+              <select className="border border-gray-300 px-1 py-0.5 bg-white"><option>All type</option></select>
+              <span>Status:</span>
+              <select 
+                className="border border-gray-300 px-1 py-0.5 bg-white"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as any)}
+              >
+                <option value="all">All</option>
+                <option value="pending">Verify</option>
+                <option value="published">Published</option>
+                <option value="deleted">Deleted</option>
+              </select>
+              <span>Sort by:</span>
+              <select className="border border-gray-300 px-1 py-0.5 bg-white"><option>Oldest comments</option></select>
+            </div>
           </div>
         </div>
 
         {/* Table Header */}
         <div className="flex bg-[#990000] text-white text-xs font-bold border-b border-gray-300">
           <div className="w-10 p-2 text-center border-r border-red-800">No.</div>
-          <div className="w-32 p-2 text-center border-r border-red-800">Delete</div>
-          <div className="w-16 p-2 text-center border-r border-red-800">Verify</div>
+          <div className="w-32 p-2 text-center border-r border-red-800 flex items-center justify-center gap-2">
+            <input type="checkbox" checked={isAllDeleteChecked} onChange={toggleAllDelete} className="cursor-pointer" />
+            Delete
+          </div>
+          <div className="w-16 p-2 text-center border-r border-red-800 flex items-center justify-center gap-2">
+            <input type="checkbox" checked={isAllVerifyChecked} onChange={toggleAllVerify} className="cursor-pointer" />
+            Verify
+          </div>
           <div className="flex-1 p-2 text-center border-r border-red-800">Comment</div>
           <div className="w-24 p-2 text-center">Creation Time</div>
         </div>
 
         {/* Comment List */}
-        <div className="flex-1 overflow-y-auto bg-[#f9f9f9] p-2 space-y-2">
+        <div className="flex-1 overflow-y-auto bg-white space-y-0">
           {filteredComments.map((comment, index) => (
             <CommentRow 
               key={comment.id} 
@@ -394,6 +493,10 @@ export default function App() {
               comment={comment} 
               onAction={handleAction}
               onUpdateText={handleUpdateText}
+              isSelectedVerify={selectedVerify.includes(comment.id)}
+              selectedDeleteReason={selectedDelete.find(d => d.id === comment.id)?.reason}
+              onToggleVerify={() => toggleVerifySelection(comment.id)}
+              onToggleDelete={(reason) => toggleDeleteSelection(comment.id, reason)}
             />
           ))}
           {filteredComments.length === 0 && (
@@ -454,34 +557,41 @@ function CommentRow({
   index, 
   comment, 
   onAction,
-  onUpdateText
+  onUpdateText,
+  isSelectedVerify,
+  selectedDeleteReason,
+  onToggleVerify,
+  onToggleDelete
 }: { 
   index: number, 
   comment: Comment, 
   onAction: (id: string, action: 'publish' | 'delete', reason?: 'Theo nguyên tắc' | 'Không phù hợp') => void,
-  onUpdateText: (id: string, text: string) => void
+  onUpdateText: (id: string, text: string) => void,
+  isSelectedVerify: boolean,
+  selectedDeleteReason?: 'Theo nguyên tắc' | 'Không phù hợp',
+  onToggleVerify: () => void,
+  onToggleDelete: (reason: 'Theo nguyên tắc' | 'Không phù hợp') => void
 }) {
-  const [deleteReason, setDeleteReason] = useState<'Theo nguyên tắc' | 'Không phù hợp' | undefined>(comment.deleteReason);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(comment.text);
 
   const aiConfig = comment.aiResult ? getAIStatusConfig(comment.aiResult.action_status) : null;
 
   return (
-    <div className={`flex bg-white border border-gray-300 shadow-sm ${comment.status !== 'pending' ? 'opacity-60 grayscale-[30%]' : ''}`}>
+    <div className={`flex border-b border-gray-300 ${comment.status !== 'pending' ? 'opacity-60 grayscale-[30%] bg-gray-50' : 'bg-white'}`}>
       {/* No. */}
-      <div className="w-10 p-2 text-center border-r border-gray-200 text-gray-500 font-medium flex items-center justify-center">
+      <div className="w-10 p-2 text-center border-r border-gray-200 text-gray-800 font-bold flex items-center justify-center">
         {index}
       </div>
 
       {/* Delete Reasons */}
-      <div className="w-32 p-2 border-r border-gray-200 flex flex-col gap-2 justify-center bg-gray-50">
+      <div className="w-32 p-2 border-r border-gray-200 flex flex-col gap-2 justify-center">
         <label className="flex items-start gap-1.5 text-[11px] cursor-pointer">
           <input 
             type="checkbox" 
             className="mt-0.5" 
-            checked={deleteReason === 'Theo nguyên tắc'}
-            onChange={() => setDeleteReason('Theo nguyên tắc')}
+            checked={selectedDeleteReason === 'Theo nguyên tắc'}
+            onChange={() => onToggleDelete('Theo nguyên tắc')}
             disabled={comment.status !== 'pending'}
           />
           <span className="leading-tight">Theo nguyên tắc</span>
@@ -490,8 +600,8 @@ function CommentRow({
           <input 
             type="checkbox" 
             className="mt-0.5"
-            checked={deleteReason === 'Không phù hợp'}
-            onChange={() => setDeleteReason('Không phù hợp')}
+            checked={selectedDeleteReason === 'Không phù hợp'}
+            onChange={() => onToggleDelete('Không phù hợp')}
             disabled={comment.status !== 'pending'}
           />
           <div className="flex flex-col leading-tight">
@@ -502,14 +612,12 @@ function CommentRow({
       </div>
 
       {/* Verify Checkbox */}
-      <div className="w-16 p-2 border-r border-gray-200 flex items-center justify-center bg-gray-50">
+      <div className="w-16 p-2 border-r border-gray-200 flex items-center justify-center">
         <input 
           type="checkbox" 
           className="w-4 h-4 cursor-pointer"
-          checked={comment.status === 'published'}
-          onChange={(e) => {
-            if (e.target.checked) onAction(comment.id, 'publish');
-          }}
+          checked={isSelectedVerify}
+          onChange={onToggleVerify}
           disabled={comment.status !== 'pending'}
         />
       </div>
@@ -543,10 +651,10 @@ function CommentRow({
         )}
 
         {/* Text Area */}
-        <div className="relative flex-1 mb-3">
+        <div className="relative flex-1 mb-2">
           {isEditing ? (
             <textarea
-              className="w-full h-full min-h-[80px] border border-blue-400 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 rounded shadow-inner resize-y"
+              className="w-full h-full min-h-[80px] border border-blue-400 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 shadow-inner resize-y"
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
               autoFocus
@@ -557,7 +665,7 @@ function CommentRow({
             />
           ) : (
             <div 
-              className="w-full min-h-[80px] border border-gray-300 p-2 text-sm bg-white rounded cursor-text hover:border-gray-400 transition-colors"
+              className="w-full min-h-[80px] border border-gray-300 p-2 text-sm bg-white cursor-text hover:border-gray-400 transition-colors shadow-sm"
               onClick={() => {
                 if (comment.status === 'pending') setIsEditing(true);
               }}
@@ -567,8 +675,8 @@ function CommentRow({
           )}
         </div>
 
-        {/* Footer: User Info & Actions */}
-        <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-100">
+        {/* User Info & Actions (Below the box) */}
+        <div className="flex items-center justify-between mt-1">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 bg-[#990000] rounded flex items-center justify-center text-white font-bold text-[10px]">
               {comment.username.charAt(0).toUpperCase()}
@@ -577,32 +685,39 @@ function CommentRow({
             <span className="text-gray-500 text-xs">({comment.email})</span>
           </div>
           
-          <div className="flex items-center gap-3 text-xs font-bold text-gray-600">
+          <div className="flex items-center gap-2 text-xs text-gray-600">
             {comment.status === 'pending' ? (
               <>
-                <button className="hover:text-blue-600" onClick={() => onAction(comment.id, 'publish')}>[ Verify ]</button>
-                <button className="hover:text-gray-800">[ Log ]</button>
                 <button 
-                  className="hover:text-red-600" 
+                  className="hover:underline" 
                   onClick={() => {
-                    if (!deleteReason) {
-                      alert("Vui lòng chọn lý do xóa (Theo nguyên tắc / Không phù hợp)");
+                    if (window.confirm("Are you sure to publish this comment?")) {
+                      onAction(comment.id, 'publish');
+                    }
+                  }}
+                >
+                  [ Verify ]
+                </button>
+                <span>-</span>
+                <button className="hover:underline">[ Log ]</button>
+                <span>-</span>
+                <button 
+                  className="hover:underline" 
+                  onClick={() => {
+                    if (!selectedDeleteReason) {
+                      alert("Vui lòng chọn lý do xóa (Theo nguyên tắc / Không phù hợp) ở cột bên trái trước khi xóa.");
                       return;
                     }
-                    onAction(comment.id, 'delete', deleteReason);
+                    if (window.confirm("Are you sure to delete this comment?")) {
+                      onAction(comment.id, 'delete', selectedDeleteReason);
+                    }
                   }}
                 >
                   [ Delete ]
                 </button>
-                <button 
-                  className="hover:text-green-600"
-                  onClick={() => setIsEditing(true)}
-                >
-                  [ Update ]
-                </button>
               </>
             ) : (
-              <span className={`px-2 py-1 rounded text-white ${comment.status === 'published' ? 'bg-green-600' : 'bg-red-600'}`}>
+              <span className={`px-2 py-1 rounded text-white font-bold ${comment.status === 'published' ? 'bg-green-600' : 'bg-red-600'}`}>
                 {comment.status.toUpperCase()}
               </span>
             )}
@@ -611,7 +726,7 @@ function CommentRow({
       </div>
 
       {/* Creation Time */}
-      <div className="w-24 p-2 border-l border-gray-200 flex items-center justify-center text-[11px] text-gray-500 bg-gray-50">
+      <div className="w-24 p-2 border-l border-gray-200 flex items-center justify-center text-[11px] text-gray-500">
         {comment.timestamp}
       </div>
     </div>
