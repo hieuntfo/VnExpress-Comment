@@ -290,7 +290,10 @@ export default function App() {
   };
 
   const handleBulkVerify = () => {
-    if (selectedVerify.length === 0) return;
+    if (selectedVerify.length === 0) {
+      alert("Vui lòng chọn ít nhất một bình luận (tích vào ô Verify) để duyệt.");
+      return;
+    }
     if (window.confirm("Are you sure to publish this comment?")) {
       setIsProcessing(true);
       setTimeout(() => {
@@ -302,7 +305,10 @@ export default function App() {
   };
 
   const handleBulkDelete = () => {
-    if (selectedDelete.length === 0) return;
+    if (selectedDelete.length === 0) {
+      alert("Vui lòng chọn ít nhất một bình luận (tích vào ô lý do Delete) để xóa.");
+      return;
+    }
     if (window.confirm("Are you sure to delete this comment?")) {
       setIsProcessing(true);
       setTimeout(() => {
@@ -337,14 +343,16 @@ export default function App() {
     setSelectedVerify(prev => prev.filter(item => item !== id));
   };
 
-  const isAllVerifyChecked = filteredComments.length > 0 && filteredComments.every(c => selectedVerify.includes(c.id));
-  const isAllDeleteChecked = filteredComments.length > 0 && filteredComments.every(c => selectedDelete.some(d => d.id === c.id));
+  const pendingFilteredComments = filteredComments.filter(c => c.status === 'pending');
+
+  const isAllVerifyChecked = pendingFilteredComments.length > 0 && pendingFilteredComments.every(c => selectedVerify.includes(c.id));
+  const isAllDeleteChecked = pendingFilteredComments.length > 0 && pendingFilteredComments.every(c => selectedDelete.some(d => d.id === c.id));
 
   const toggleAllVerify = () => {
     if (isAllVerifyChecked) {
       setSelectedVerify([]);
     } else {
-      setSelectedVerify(filteredComments.map(c => c.id));
+      setSelectedVerify(pendingFilteredComments.map(c => c.id));
       setSelectedDelete([]);
     }
   };
@@ -353,7 +361,7 @@ export default function App() {
     if (isAllDeleteChecked) {
       setSelectedDelete([]);
     } else {
-      setSelectedDelete(filteredComments.map(c => ({ id: c.id, reason: 'Theo nguyên tắc' })));
+      setSelectedDelete(pendingFilteredComments.map(c => ({ id: c.id, reason: 'Theo nguyên tắc' })));
       setSelectedVerify([]);
     }
   };
@@ -449,12 +457,12 @@ export default function App() {
           
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <button className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Back</button>
+              <button onClick={() => alert("Chức năng Back đang được phát triển.")} className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Back</button>
               <button onClick={handleBulkDelete} className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Delete</button>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={handleBulkVerify} className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Verify</button>
-              <button className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Export Excel</button>
+              <button onClick={() => alert("Chức năng Export Excel đang được phát triển.")} className="border border-gray-400 px-3 py-1 bg-gray-100 hover:bg-gray-200 text-xs font-bold">Export Excel</button>
             </div>
             <div className="flex items-center gap-2 text-xs">
               <span>Type Comment:</span>
@@ -708,7 +716,7 @@ function CommentRow({
                   [ Verify ]
                 </button>
                 <span>-</span>
-                <button className="hover:underline">[ Log ]</button>
+                <button className="hover:underline" onClick={() => alert("Chức năng xem Log chi tiết đang được phát triển.")}>[ Log ]</button>
                 <span>-</span>
                 <button 
                   className="hover:underline" 
