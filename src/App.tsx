@@ -203,7 +203,16 @@ export default function App() {
   const runAIModeration = async () => {
     setIsRunningAI(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      // Hỗ trợ cả biến môi trường của AI Studio và Vercel (VITE_GEMINI_API_KEY)
+      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      
+      if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY') {
+        alert("Lỗi: Không tìm thấy Gemini API Key.\n\nVì bạn đang deploy lên Vercel, vui lòng làm theo các bước sau:\n1. Vào Vercel Dashboard > Settings > Environment Variables\n2. Thêm biến mới với tên: VITE_GEMINI_API_KEY và giá trị là API Key của bạn.\n3. Chuyển sang tab Deployments và chọn Redeploy.");
+        setIsRunningAI(false);
+        return;
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
 
       const pendingComments = comments.filter(c => c.status === 'pending' && !c.aiResult);
       
